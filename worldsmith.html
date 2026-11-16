@@ -1,0 +1,598 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Worldsmith</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IM+Fell+DW+Pica:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: a cartographer's chart table. Big map on the left, a drawer of controls on the right that changes with the phase (shape, found, rule). */
+:root{
+  --bg:#e8ecef; --panel:#f7f9fa; --ink:#15232b; --muted:#566872; --line:#cbd5da;
+  --accent:#1c6e78; --accent-ink:#ffffff; --frame:#0c1a24; --chip:#e1e8eb; --warn:#a4452a;
+  --serif:"IM Fell DW Pica",Georgia,"Times New Roman",serif;
+  --sans:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0b1318; --panel:#121d24; --ink:#e2ebee; --muted:#8aa0aa; --line:#243640;
+  --accent:#5cc2c9; --accent-ink:#04161a; --frame:#050b0f; --chip:#1a2a33; --warn:#e08a6c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b1318; --panel:#121d24; --ink:#e2ebee; --muted:#8aa0aa; --line:#243640;
+  --accent:#5cc2c9; --accent-ink:#04161a; --frame:#050b0f; --chip:#1a2a33; --warn:#e08a6c; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;
+  padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.top h1{font-family:var(--serif);font-weight:400;font-size:30px;margin:0;letter-spacing:.01em}
+.top .tag{color:var(--muted);font-size:13px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+.stage{display:flex;flex-direction:column;gap:10px;min-width:0}
+.mapwrap{position:relative;background:var(--frame);border-radius:6px;padding:6px;border:1px solid var(--line)}
+canvas#map{display:block;width:100%;height:auto;aspect-ratio:5/3;border-radius:3px;cursor:crosshair;touch-action:manipulation;max-width:100%}
+.maptitle{position:absolute;left:16px;top:14px;background:rgba(6,16,24,.72);color:#eaf2f4;padding:5px 12px 6px;border-radius:3px;
+  font-family:var(--serif);font-size:20px;letter-spacing:.02em;pointer-events:none;max-width:70%}
+.maptitle small{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;margin-top:1px}
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:7px 14px;border-radius:4px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:.95}
+.readout{font-family:var(--mono);font-size:12px;color:var(--muted);min-height:2.8em;display:flex;flex-wrap:wrap;gap:4px 16px}
+.readout b{color:var(--ink);font-weight:500}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h2{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.worldname{font-family:var(--serif);font-size:26px;line-height:1.1}
+.row{display:flex;gap:8px;align-items:center;min-width:0}
+.row>*{min-width:0}
+input[type=text]{flex:1;font:inherit;font-family:var(--mono);font-size:13px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:7px 9px;text-transform:uppercase;width:100%}
+button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--chip);color:var(--ink);padding:7px 12px;font-weight:600}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.block{width:100%;padding:10px 12px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sl{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13px}
+.sl output{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.sl input{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:0}
+.bar{display:flex;height:10px;border-radius:3px;overflow:hidden;background:var(--chip)}
+.bar i{display:block;height:100%}
+.stats{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.hint{color:var(--muted);font-size:13px;margin:0}
+.clock{display:flex;justify-content:space-between;align-items:baseline}
+.clock .yr{font-family:var(--serif);font-size:28px}
+.clock .era{color:var(--muted);font-size:12px;text-align:right}
+.seg{display:flex}
+.seg button{border-radius:0;padding:6px 10px;flex:1}
+.seg button:first-child{border-radius:4px 0 0 4px}.seg button:last-child{border-radius:0 4px 4px 0}
+.seg button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.score{display:flex;flex-direction:column;gap:8px}
+.rl{display:grid;grid-template-columns:12px 1fr auto;gap:2px 8px;align-items:center}
+.rl .sw{width:12px;height:12px;border-radius:50%}
+.rl .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl .nm em{font-style:normal;color:var(--muted);font-weight:400;font-size:12px}
+.rl .sc{font-family:var(--mono);font-size:13px}
+.rl .meta{grid-column:2/4;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+.rl .track{grid-column:2/4;height:4px;background:var(--chip);border-radius:2px;overflow:hidden}
+.rl .track i{display:block;height:100%}
+.rl.dead{opacity:.45;text-decoration:line-through}
+.infl{display:flex;gap:4px;align-items:center}
+.infl i{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--accent);display:inline-block}
+.infl i.f{background:var(--accent)}
+.decrees{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.decrees button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;padding:8px 10px}
+.decrees small{font-weight:400;color:var(--muted);font-size:11.5px;line-height:1.3}
+.decrees .cost{font-family:var(--mono);font-size:11px;color:var(--accent)}
+.log{list-style:none;margin:0;padding:0;max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:5px;font-size:13px}
+.log li{display:grid;grid-template-columns:44px 1fr;gap:8px}
+.log time{font-family:var(--mono);font-size:11px;color:var(--muted);padding-top:2px}
+.log li.mine{font-weight:600}
+.result{position:absolute;inset:6px;background:rgba(5,12,17,.86);color:#eaf2f4;border-radius:3px;display:flex;align-items:center;justify-content:center;padding:16px}
+.result .box{max-width:460px;width:100%;display:flex;flex-direction:column;gap:12px}
+.result h3{font-family:var(--serif);font-weight:400;font-size:30px;margin:0}
+.result p{margin:0;color:#b9cad1}
+.result ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.result li{display:grid;grid-template-columns:22px 12px 1fr auto;gap:8px;align-items:center}
+.result li .sw{width:12px;height:12px;border-radius:50%}
+.result li .n{font-family:var(--mono);color:#8aa0aa}
+.result .row button{flex:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<div class="app">
+  <header class="top"><h1>Worldsmith</h1><span class="tag">Shape a planet, then rule a corner of it.</span></header>
+  <main class="layout">
+    <section class="stage">
+      <div class="mapwrap">
+        <canvas id="map" aria-label="World map"></canvas>
+        <div class="maptitle" id="mapTitle"></div>
+        <div class="toast" id="toast" role="status"></div>
+        <div class="result" id="result" hidden></div>
+      </div>
+      <div class="readout" id="readout"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <aside class="side">
+      <section class="card" id="pDesign">
+        <h2>Shape the world</h2>
+        <div class="worldname" id="wName"></div>
+        <div class="row"><input type="text" id="seed" maxlength="14" spellcheck="false" aria-label="World seed"><button id="roll" title="New random seed">Reroll</button></div>
+        <div class="sl"><label for="sWater">Oceans</label><output id="oWater"></output><input type="range" id="sWater" min="35" max="85" value="62"></div>
+        <div class="sl"><label for="sCont">Continents</label><output id="oCont"></output><input type="range" id="sCont" min="1" max="8" value="4"></div>
+        <div class="sl"><label for="sTemp">Climate</label><output id="oTemp"></output><input type="range" id="sTemp" min="-10" max="10" value="0"></div>
+        <div class="sl"><label for="sWet">Rainfall</label><output id="oWet"></output><input type="range" id="sWet" min="-10" max="10" value="0"></div>
+        <div class="sl"><label for="sRough">Mountains</label><output id="oRough"></output><input type="range" id="sRough" min="0" max="10" value="5"></div>
+        <div class="bar" id="biomeBar"></div>
+        <div class="stats"><span id="stLand"></span><span id="stRiver"></span></div>
+        <button class="primary block" id="toPlace">Found a realm</button>
+      </section>
+
+      <section class="card" id="pPlace" hidden>
+        <h2>Found your realm</h2>
+        <p class="hint">Tap or click a stretch of land to plant your capital. Green shading shows how fertile each tile is. Three rival realms will settle far away.</p>
+        <label class="row" style="gap:8px"><input type="checkbox" id="lens" checked style="accent-color:var(--accent)"> Show fertility</label>
+        <button class="block" id="backDesign">Back to the world</button>
+      </section>
+
+      <section class="card" id="pPlay" hidden>
+        <div class="clock"><div class="yr" id="yr"></div><div class="era" id="era"></div></div>
+        <div class="row">
+          <button class="primary" id="playBtn" style="width:92px">Pause</button>
+          <button id="stepBtn">Step</button>
+          <div class="seg" id="speed" style="flex:1"><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="4">4×</button><button data-s="8">8×</button></div>
+        </div>
+        <div class="score" id="score"></div>
+      </section>
+
+      <section class="card" id="pRule" hidden>
+        <div class="row" style="justify-content:space-between"><h2>Decrees</h2><div class="infl" id="infl" title="Influence"></div></div>
+        <div class="decrees" id="decrees"></div>
+      </section>
+
+      <section class="card" id="pLog" hidden>
+        <h2>Chronicle</h2>
+        <ul class="log" id="log"></ul>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ---------- constants ---------- */
+const W=200,H=120,N=W*H,S=5,CW=W*S,CH=H*S,MAXT=120;
+const $=s=>document.querySelector(s);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
+const cv=$('#map'); cv.width=CW; cv.height=CH; const ctx=cv.getContext('2d');
+const mk=()=>{const c=document.createElement('canvas');c.width=W;c.height=H;return c};
+const tcv=mk(), tctx=tcv.getContext('2d'), ocv=mk(), octx=ocv.getContext('2d');
+
+const BIOMES=[
+ {n:'Deep ocean',c:[24,52,84],h:0},{n:'Shallows',c:[46,98,134],h:0},{n:'Sea ice',c:[205,224,233],h:0},
+ {n:'Beach',c:[224,210,162],h:.45},{n:'Glacier',c:[238,245,248],h:0},{n:'Tundra',c:[150,162,142],h:.12},
+ {n:'Taiga',c:[62,100,84],h:.35},{n:'Steppe',c:[188,180,112],h:.6},{n:'Grassland',c:[128,166,82],h:1},
+ {n:'Forest',c:[58,122,66],h:.85},{n:'Desert',c:[216,186,118],h:.12},{n:'Savanna',c:[176,172,80],h:.7},
+ {n:'Rainforest',c:[22,96,58],h:.55},{n:'Mountain',c:[128,118,112],h:.08},{n:'Peak',c:[242,242,246],h:0}
+];
+const REALM_COLORS=['#e5483d','#f2b632','#9a63e6','#27c4d6'];
+
+/* ---------- seeded randomness and noise ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function makeNoise(seed){
+  const hh=(a,b)=>{let n=(Math.imul(a,374761393)+Math.imul(b,668265263)+seed)|0;n=Math.imul(n^(n>>>13),1274126177);return((n^(n>>>16))>>>0)/4294967296};
+  return(x,y)=>{const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+    return lerp(lerp(hh(xi,yi),hh(xi+1,yi),u),lerp(hh(xi,yi+1),hh(xi+1,yi+1),u),v)};
+}
+function fbm(n,x,y,o){let a=.5,f=1,s=0,t=0;for(let i=0;i<o;i++){s+=a*n(x*f,y*f);t+=a;a*=.5;f*=2}return s/t}
+
+const SYL=['al','an','ar','bel','cor','dra','el','fen','gal','hal','is','kar','lor','mar','nor','or','pyr','quel','ras','sel','tal','um','val','wen','yar','zan','thor','mir','ost','vey'];
+const END=['ia','on','ar','ith','ora','um','en','and','ae','is','os','heim'];
+function makeName(rng){let s=SYL[(rng()*SYL.length)|0];if(rng()<.55)s+=SYL[(rng()*SYL.length)|0];s+=END[(rng()*END.length)|0];return s[0].toUpperCase()+s.slice(1)}
+
+/* ---------- world generation ---------- */
+let world=null;
+function generate(seed,p){
+  const rnd=mulberry32(hashStr('w'+seed)), sd=()=>(rnd()*4294967296)|0;
+  const nE=makeNoise(sd()),nW1=makeNoise(sd()),nW2=makeNoise(sd()),nR=makeNoise(sd()),nM=makeNoise(sd()),nT=makeNoise(sd());
+  const centers=[];
+  for(let i=0;i<p.cont;i++)centers.push({x:W*(.12+.76*rnd()),y:H*(.22+.56*rnd()),r:W*(.10+.12*rnd())*(1.6/Math.sqrt(p.cont)+.3)});
+  const e=new Float32Array(N);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const wx=(fbm(nW1,x/28,y/28,3)-.5)*22, wy=(fbm(nW2,x/28,y/28,3)-.5)*22;
+    let c=0;for(const ce of centers){const d=Math.hypot(x+wx-ce.x,(y+wy-ce.y)*1.35)/ce.r;c=Math.max(c,Math.max(0,1-d))}
+    const f=fbm(nE,x/22,y/22,5), ridge=1-Math.abs(2*fbm(nR,x/18,y/18,4)-1);
+    let v=c*.75+(f-.5)*.55+p.rough*.28*ridge*c;
+    const fade=clamp(Math.min(x,W-1-x,y*1.6,(H-1-y)*1.6)/10,0,1);
+    e[y*W+x]=v*fade-(1-fade)*.5;
+  }
+  const sorted=Float32Array.from(e).sort();
+  const sea=sorted[Math.floor(p.water*N)], mn=sorted[0], mx=sorted[N-1];
+  const el=new Float32Array(N);
+  for(let i=0;i<N;i++)el[i]=e[i]<sea?(e[i]-sea)/(sea-mn||1):(e[i]-sea)/(mx-sea||1);
+  // distance from ocean
+  const dist=new Int16Array(N).fill(999),q=[];
+  for(let i=0;i<N;i++)if(el[i]<0){dist[i]=0;q.push(i)}
+  for(let h=0;h<q.length;h++){const i=q[h],x=i%W,y=(i/W)|0,d=dist[i]+1;
+    if(x>0&&dist[i-1]>d){dist[i-1]=d;q.push(i-1)} if(x<W-1&&dist[i+1]>d){dist[i+1]=d;q.push(i+1)}
+    if(y>0&&dist[i-W]>d){dist[i-W]=d;q.push(i-W)} if(y<H-1&&dist[i+W]>d){dist[i+W]=d;q.push(i+W)}}
+  const temp=new Float32Array(N),moist=new Float32Array(N),biome=new Uint8Array(N);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x,lat=Math.abs(y/H-.5)*2;
+    let t=1-Math.pow(lat,1.25)*1.05+p.temp*.25+(fbm(nT,x/30,y/30,3)-.5)*.2-Math.max(0,el[i])*.35;
+    temp[i]=clamp(t,0,1);
+    let m=fbm(nM,x/24,y/24,4)*1.15-.15+Math.max(0,1-dist[i]/18)*.28+p.wet*.28+.15*Math.cos(lat*Math.PI*2);
+    moist[i]=clamp(m,0,1);
+    const E=el[i],T=temp[i],M=moist[i];let b;
+    if(E<0){b=T<.11?2:(E<-.4?0:1)}
+    else if(E>.86)b=14;
+    else if(E>.62)b=13;
+    else if(E<.035&&dist[i]<=1&&T>.2)b=3;
+    else if(T<.12)b=4;
+    else if(T<.2)b=5;
+    else if(T<.36)b=M>.38?6:5;
+    else if(T<.62)b=M<.24?7:(M<.52?8:9);
+    else b=M<.24?10:(M<.46?11:(M<.64?9:12));
+    biome[i]=b;
+  }
+  // rivers
+  const river=new Uint8Array(N);
+  const land=[];for(let i=0;i<N;i++)if(el[i]>.22&&moist[i]>.4)land.push(i);
+  const nSrc=Math.min(land.length,70);
+  for(let s=0;s<nSrc;s++){
+    let i=land[(rnd()*land.length)|0];const path=[];let ok=false;
+    for(let step=0;step<420;step++){
+      path.push(i);if(el[i]<0||(river[i]&&step>0)){ok=true;break}
+      const x=i%W,y=(i/W)|0;let best=-1,bv=el[i];
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+        const j=ny*W+nx,v=el[j]+(dx&&dy?.0008:0);if(v<bv){bv=v;best=j}}
+      if(best<0)break;i=best;
+    }
+    if(ok&&path.length>=9)for(const k of path)if(el[k]>=0)river[k]=1;
+  }
+  // fertility
+  const hab=new Float32Array(N),counts=new Array(BIOMES.length).fill(0);let landN=0,riverN=0;
+  for(let i=0;i<N;i++){
+    counts[biome[i]]++;
+    if(el[i]<0)continue;landN++;
+    const x=i%W,y=(i/W)|0;let h=BIOMES[biome[i]].h,nearRiver=0,nearSea=0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;const j=ny*W+nx;if(river[j])nearRiver=1;if(el[j]<0)nearSea=1}
+    if(river[i]){riverN++;h+=.45}else if(nearRiver)h+=.2;
+    if(nearSea)h+=.12;
+    hab[i]=h>0?Math.min(1.4,h):0;
+  }
+  return{seed,name:makeName(mulberry32(hashStr('n'+seed))),el,temp,moist,biome,river,hab,counts,landN,riverN,sea}
+}
+
+/* ---------- terrain painting ---------- */
+function paintTerrain(){
+  const id=tctx.createImageData(W,H),d=id.data,w=world;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x,b=w.biome[i];let c=BIOMES[b].c,r=c[0],g=c[1],bl=c[2];
+    if(w.el[i]<0&&b<2){const k=clamp((w.el[i]+.7)/.7,0,1),a=BIOMES[0].c,s=BIOMES[1].c;r=lerp(a[0],s[0],k);g=lerp(a[1],s[1],k);bl=lerp(a[2],s[2],k)}
+    let m=1;
+    if(w.el[i]>=0){
+      const a=w.el[y>0&&x>0?i-W-1:i],bb=w.el[y<H-1&&x<W-1?i+W+1:i];
+      m=1+clamp((a-bb)*2.6,-.3,.3);
+    }
+    const nz=w.el[i]<0?0:((Math.imul(i,2654435761)>>>24)/255-.5)*7;
+    if(w.river[i]){r=60;g=126;bl=188;m=1}
+    const o=i*4;d[o]=clamp(r*m+nz,0,255);d[o+1]=clamp(g*m+nz,0,255);d[o+2]=clamp(bl*m+nz,0,255);d[o+3]=255;
+  }
+  tctx.putImageData(id,0,0);
+}
+
+/* ---------- game state ---------- */
+let state={phase:'design',tick:0,realms:[],owner:new Int8Array(N).fill(-1),infl:3,speed:2,paused:false,log:[],timer:null,lens:true,hover:-1,human:null,clashes:{}};
+let ownerDirty=true,needDraw=true;
+const rr=Math.random;
+const isLand=i=>world.el[i]>=0;
+
+function claim(r,i){
+  const o=state.owner[i];
+  if(o>=0&&o!==r.id){
+    const q=state.realms[o];q.tiles--;q.cap-=world.hab[i];
+    const ci=q.cities.findIndex(c=>c.i===i);
+    if(ci>=0){const c=q.cities.splice(ci,1)[0];r.cities.push(c);log(`${r.name} seizes ${c.name} from ${q.name}.`,r)}
+    if(q.tiles<=0&&q.alive){q.alive=false;log(`${q.name} has fallen.`,q);}
+  }
+  state.owner[i]=r.id;r.tiles++;r.cap+=world.hab[i];r.list.push(i);ownerDirty=true;needDraw=true;
+}
+function pickOwned(r){
+  for(let k=0;k<8&&r.list.length;k++){const j=(rr()*r.list.length)|0,i=r.list[j];
+    if(state.owner[i]===r.id)return i;r.list[j]=r.list[r.list.length-1];r.list.pop()}
+  return -1;
+}
+function foundCity(r,i,capital){
+  const c={i,name:capital?r.capital:makeName(rr),wonder:null};r.cities.push(c);return c;
+}
+function log(text,r){state.log.unshift({year:state.tick*10,text,color:r?r.color:null,mine:r&&r.human});if(state.log.length>120)state.log.pop();renderLog()}
+const score=r=>Math.round(r.tiles+r.pop/8+r.cities.length*12+r.wonders*50);
+
+function newRealm(id,name,i,human){
+  const r={id,name,capital:makeName(rr),color:REALM_COLORS[id],human,pop:20,tiles:0,cap:0,list:[],cities:[],boostUntil:0,armyUntil:0,aggr:human?1:.75+rr()*.6,grow:human?1:.9+rr()*.2,alive:true,wonders:0};
+  state.realms.push(r);
+  const x=i%W,y=(i/W)|0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;const j=ny*W+nx;if(isLand(j)&&state.owner[j]<0&&world.hab[j]>0)claim(r,j)}
+  if(state.owner[i]!==id)claim(r,i);
+  foundCity(r,i,true);return r;
+}
+
+function startGame(humanTile){
+  state.owner.fill(-1);state.realms=[];state.log=[];state.tick=0;state.infl=3;state.clashes={};ownerDirty=true;
+  const pts=[humanTile];
+  const human=newRealm(0,makeName(rr),humanTile,true);state.human=human;
+  const cand=[];for(let i=0;i<N;i++)if(world.hab[i]>=.6&&state.owner[i]<0)cand.push(i);
+  for(let k=1;k<4;k++){
+    let best=-1,bh=-1,found=0;
+    for(let t=0;t<900&&found<40;t++){
+      const i=cand[(rr()*cand.length)|0];if(i===undefined)break;
+      const md=t<400?30:t<650?18:9;
+      if(pts.every(p=>Math.hypot((p%W)-(i%W),((p/W|0)-(i/W|0))*1.2)>=md)&&state.owner[i]<0){found++;if(world.hab[i]>bh){bh=world.hab[i];best=i}}
+    }
+    if(best<0)break;pts.push(best);newRealm(k,makeName(rr),best,false);
+  }
+  log(`${human.name} is founded at ${human.capital}.`,human);
+  setPhase('play');state.paused=false;scheduleTick();renderPanel();
+}
+
+function era(){const y=state.tick*10;return y<200?'Age of Settlement':y<400?'Age of Bronze':y<700?'Age of Sails':y<1000?'Age of Empires':'Age of Reason'}
+const seafaring=()=>state.tick>=30;
+
+function step(r){
+  const t=state.tick;
+  // population
+  const target=r.cap*10+r.cities.length*30+15;
+  r.pop+=(target-r.pop)*.2;
+  // expansion
+  const boost=r.boostUntil>t?1.5:1;
+  const att=Math.ceil((3+r.tiles*.5)*boost*r.grow);
+  const strong=r.pop*(r.armyUntil>t?2:1);
+  for(let k=0;k<att;k++){
+    const from=pickOwned(r);if(from<0)break;
+    let R=1;if(seafaring()&&rr()<.05)R=2+((rr()*5)|0);
+    const x=from%W,y=(from/W|0),nx=x+((rr()*(2*R+1))|0)-R,ny=y+((rr()*(2*R+1))|0)-R;
+    if(nx<0||ny<0||nx>=W||ny>=H)continue;
+    const to=ny*W+nx;if(!isLand(to)||world.hab[to]<=0)continue;
+    const o=state.owner[to];
+    if(o<0){if(rr()<Math.min(1,world.hab[to])*(R>1?.45:.85))claim(r,to)}
+    else if(o!==r.id&&R===1){
+      const q=state.realms[o];if(!q.alive)continue;
+      const key=Math.min(r.id,q.id)+'-'+Math.max(r.id,q.id);
+      if(!state.clashes[key]){state.clashes[key]=1;log(`${r.name} and ${q.name} clash on the frontier.`,r)}
+      const def=q.pop*(q.armyUntil>t?2:1)*1.2;
+      if(rr()<.35*strong/(strong+def)*r.aggr*(q.cities.some(c=>c.i===to)?.5:1))claim(r,to);
+    }
+  }
+  // cities
+  if(r.alive&&r.tiles>=(r.cities.length+1)*16){
+    let best=-1,bs=-9;
+    for(let k=0;k<30;k++){const i=pickOwned(r);if(i<0)break;
+      if(r.cities.some(c=>Math.hypot((c.i%W)-(i%W),(c.i/W|0)-(i/W|0))<6))continue;
+      const s=world.hab[i]+rr()*.1;if(s>bs){bs=s;best=i}}
+    if(best>=0){const c=foundCity(r,best,false);const n=r.cities.length;if(n<=4||n%5===0)log(`${r.name} founds ${c.name}.`,r)}
+  }
+  // wonders
+  if(r.cities.length>=3&&r.wonders<3&&rr()<.03){
+    const c=r.cities.find(c=>!c.wonder);
+    if(c){const kinds=['Library','Observatory','Lighthouse','Ziggurat','Aqueduct','Academy'];
+      c.wonder=`Great ${kinds[(rr()*kinds.length)|0]} of ${c.name}`;r.wonders++;log(`${r.name} completes the ${c.wonder}.`,r)}
+  }
+}
+
+function tick(){
+  if(state.phase!=='play')return;
+  state.tick++;
+  if(state.tick===30)log('Shipwrights master the open sea. Realms can now settle distant shores.');
+  if(state.tick%2===0)state.infl=Math.min(8,state.infl+1);
+  const alive=state.realms.filter(r=>r.alive);
+  for(let i=alive.length-1;i>0;i--){const j=(rr()*(i+1))|0;[alive[i],alive[j]]=[alive[j],alive[i]]}
+  for(const r of alive)if(r.alive)step(r);
+  if(rr()<.05){const r=state.realms.filter(r=>r.alive)[(rr()*state.realms.filter(r=>r.alive).length)|0];
+    if(r){if(rr()<.5){r.pop*=.78;log(`Plague sweeps through ${r.name}.`,r)}else{r.boostUntil=state.tick+6;log(`A golden age dawns in ${r.name}.`,r)}}}
+  for(const r of state.realms)r.score=score(r);
+  renderPanel();needDraw=true;
+  if(state.tick>=MAXT||!state.human.alive||state.realms.filter(r=>r.alive).length<=1)endGame();
+}
+function scheduleTick(){
+  clearTimeout(state.timer);
+  if(state.phase!=='play'||state.paused)return;
+  state.timer=setTimeout(()=>{tick();scheduleTick()},{1:700,2:350,4:150,8:60}[state.speed]);
+}
+
+/* ---------- decrees ---------- */
+const DECREES=[
+ {id:'settle',name:'Call settlers',cost:2,desc:'Claim up to 8 nearby tiles at once.'},
+ {id:'army',name:'Raise legions',cost:3,desc:'Double your strength in war for 10 turns.'},
+ {id:'feast',name:'Great harvest',cost:2,desc:'Population +25% and faster growth.'},
+ {id:'voyage',name:'Send a fleet',cost:4,desc:'Plant a colony across the sea.',need:'Needs sailing (year 300).'}
+];
+function decree(id){
+  const r=state.human,d=DECREES.find(x=>x.id===id);
+  if(!r.alive||state.phase!=='play'||state.infl<d.cost)return;
+  const t=state.tick;
+  if(id==='settle'){
+    const c=new Set();
+    for(let k=0;k<120;k++){const f=pickOwned(r);if(f<0)break;const x=f%W+((rr()*3)|0)-1,y=(f/W|0)+((rr()*3)|0)-1;
+      if(x<0||y<0||x>=W||y>=H)continue;const i=y*W+x;if(isLand(i)&&state.owner[i]<0&&world.hab[i]>.1)c.add(i)}
+    const arr=[...c].sort((a,b)=>world.hab[b]-world.hab[a]).slice(0,8);
+    if(!arr.length){toast('No open land beside your borders.');return}
+    arr.forEach(i=>claim(r,i));log(`Settlers fan out across ${arr.length} new tiles.`,r);
+  }else if(id==='army'){r.armyUntil=t+10;log(`${r.name} raises its legions.`,r)}
+  else if(id==='feast'){r.pop*=1.25;r.boostUntil=t+4;log(`A great harvest feeds ${r.name}.`,r)}
+  else if(id==='voyage'){
+    if(!seafaring()){toast('Your shipwrights are not ready yet.');return}
+    let best=-1,bh=0;
+    for(let k=0;k<260;k++){const f=pickOwned(r);if(f<0)break;const a=rr()*6.283,dd=3+rr()*9,
+      x=Math.round(f%W+Math.cos(a)*dd),y=Math.round((f/W|0)+Math.sin(a)*dd*.8);
+      if(x<0||y<0||x>=W||y>=H)continue;const i=y*W+x;
+      if(isLand(i)&&state.owner[i]<0&&world.hab[i]>bh){bh=world.hab[i];best=i}}
+    if(best<0||bh<.3){toast('No fertile shore within reach.');return}
+    const bx=best%W,by=best/W|0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const x=bx+dx,y=by+dy;if(x<0||y<0||x>=W||y>=H)continue;const i=y*W+x;if(isLand(i)&&state.owner[i]<0&&world.hab[i]>0)claim(r,i)}
+    const c=foundCity(r,best,false);log(`A fleet from ${r.name} founds the colony of ${c.name}.`,r);
+  }
+  state.infl-=d.cost;renderPanel();needDraw=true;
+}
+
+/* ---------- end of game ---------- */
+function endGame(){
+  state.phase='over';clearTimeout(state.timer);
+  for(const r of state.realms)r.score=score(r);
+  const rank=[...state.realms].sort((a,b)=>b.score-a.score);
+  const pos=rank.indexOf(state.human)+1;
+  const head=!state.human.alive?`${state.human.name} has fallen`:pos===1?`${state.human.name} rules the age`:`${state.human.name} finishes ${['','first','second','third','fourth'][pos]}`;
+  const sub=state.tick>=MAXT?`Year ${state.tick*10} on ${world.name}.`:`The age ends in year ${state.tick*10} on ${world.name}.`;
+  $('#result').innerHTML=`<div class="box"><h3>${head}</h3><p>${sub} Score counts territory, people, cities and wonders.</p>
+   <ol>${rank.map((r,i)=>`<li><span class="n">${i+1}</span><span class="sw" style="background:${r.color}"></span><span>${r.name}${r.human?' (you)':''}${r.alive?'':' – fallen'}</span><b>${r.score}</b></li>`).join('')}</ol>
+   <div class="row"><button class="primary" id="again">Replay this world</button><button id="fresh">New world</button></div></div>`;
+  $('#result').hidden=false;
+  $('#again').onclick=()=>{$('#result').hidden=true;resetRealms();setPhase('place')};
+  $('#fresh').onclick=()=>{$('#result').hidden=true;resetRealms();$('#seed').value=randSeed();rebuild();setPhase('design')};
+  renderPanel();
+}
+function resetRealms(){state.owner.fill(-1);state.realms=[];state.log=[];state.human=null;ownerDirty=true;needDraw=true}
+
+/* ---------- panels ---------- */
+function setPhase(p){
+  state.phase=p;
+  $('#pDesign').hidden=p!=='design';$('#pPlace').hidden=p!=='place';
+  for(const id of ['pPlay','pRule','pLog'])$('#'+id).hidden=!(p==='play'||p==='over');
+  $('#result').hidden=p!=='over'?true:$('#result').hidden;
+  cv.style.cursor=p==='place'?'cell':'crosshair';
+  ownerDirty=true;needDraw=true;updateTitle();
+  if(p==='play')renderLog();
+}
+function updateTitle(){
+  $('#mapTitle').innerHTML=`${world.name}<small>${state.phase==='play'||state.phase==='over'?'Year '+state.tick*10:'Seed '+world.seed}</small>`;
+}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),2200)}
+function renderPanel(){
+  if(!state.human)return;
+  updateTitle();
+  $('#yr').textContent='Year '+state.tick*10;$('#era').innerHTML=`${era()}<br>${MAXT-state.tick} turns left`;
+  const rs=[...state.realms];rs.forEach(r=>r.score=score(r));
+  const mx=Math.max(1,...rs.map(r=>r.score));
+  $('#score').innerHTML=rs.sort((a,b)=>b.score-a.score).map(r=>`<div class="rl${r.alive?'':' dead'}">
+    <span class="sw" style="background:${r.color}"></span><span class="nm">${r.name}${r.human?' <em>you</em>':''}</span><span class="sc">${r.score}</span>
+    <div class="meta"><span>${r.tiles} tiles</span><span>${Math.round(r.pop)} people</span><span>${r.cities.length} cities</span>${r.wonders?`<span>${r.wonders} wonders</span>`:''}</div>
+    <div class="track"><i style="width:${r.score/mx*100}%;background:${r.color}"></i></div></div>`).join('');
+  $('#infl').innerHTML=Array.from({length:8},(_,i)=>`<i class="${i<state.infl?'f':''}"></i>`).join('');
+  $('#decrees').innerHTML=DECREES.map(d=>{
+    const lock=d.need&&!seafaring();
+    return`<button data-d="${d.id}" ${state.infl<d.cost||lock||state.phase!=='play'||!state.human.alive?'disabled':''}><b>${d.name}</b><span class="cost">${d.cost} influence</span><small>${lock?d.need:d.desc}</small></button>`}).join('');
+  $('#playBtn').textContent=state.paused?'Resume':'Pause';
+  $('#playBtn').disabled=state.phase!=='play';$('#stepBtn').disabled=state.phase!=='play';
+}
+function renderLog(){
+  $('#log').innerHTML=state.log.slice(0,40).map(e=>`<li class="${e.mine?'mine':''}"><time>${e.year}</time><span>${e.color?`<span style="color:${e.color}">●</span> `:''}${e.text}</span></li>`).join('');
+}
+function renderStats(){
+  const w=world,lb=[];
+  for(let b=3;b<=14;b++)if(w.counts[b]>0&&b!==13&&b!==14)lb.push(b);
+  const tot=w.landN||1;
+  $('#biomeBar').innerHTML=[3,4,5,6,7,8,9,10,11,12,13,14].filter(b=>w.counts[b]).map(b=>`<i title="${BIOMES[b].n}" style="width:${w.counts[b]/tot*100}%;background:rgb(${BIOMES[b].c})"></i>`).join('');
+  $('#stLand').textContent=`${Math.round(w.landN/N*100)}% land`;
+  $('#stRiver').textContent=`${w.riverN} river tiles`;
+  $('#wName').textContent=w.name;
+}
+
+/* ---------- drawing ---------- */
+function rebuildOwn(){
+  const id=octx.createImageData(W,H),d=id.data,ow=state.owner;
+  const lens=state.lens&&state.phase==='place';
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const i=y*W+x,o=i*4;
+    if(lens){
+      const h=world.hab[i];if(h>0){const k=Math.min(1,h);d[o]=lerp(220,40,k);d[o+1]=lerp(60,230,k);d[o+2]=40;d[o+3]=k>0.05?110:0}
+      continue;
+    }
+    const v=ow[i];if(v<0)continue;
+    const c=hexToRgb(state.realms[v].color);
+    let edge=false;
+    if(x===0||ow[i-1]!==v||x===W-1||ow[i+1]!==v||y===0||ow[i-W]!==v||y===H-1||ow[i+W]!==v)edge=true;
+    d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=edge?235:105;
+  }
+  octx.putImageData(id,0,0);ownerDirty=false;
+}
+const hexCache={};
+function hexToRgb(h){return hexCache[h]||(hexCache[h]=[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)])}
+function draw(){
+  needDraw=false;
+  ctx.imageSmoothingEnabled=true;ctx.drawImage(tcv,0,0,CW,CH);
+  if(ownerDirty)rebuildOwn();
+  ctx.imageSmoothingEnabled=false;ctx.drawImage(ocv,0,0,CW,CH);
+  for(const r of state.realms){
+    if(!r.alive)continue;
+    for(const c of r.cities){
+      const cx=(c.i%W+.5)*S,cy=((c.i/W|0)+.5)*S,cap=c===r.cities[0];
+      const sz=cap?10:7;
+      ctx.fillStyle='#fff';ctx.fillRect(cx-sz/2-1.5,cy-sz/2-1.5,sz+3,sz+3);
+      ctx.fillStyle=r.color;ctx.fillRect(cx-sz/2,cy-sz/2,sz,sz);
+      if(c.wonder){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,sz+3,0,6.283);ctx.stroke()}
+    }
+  }
+  if(state.hover>=0){const x=state.hover%W,y=state.hover/W|0;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(x*S-1,y*S-1,S+2,S+2)}
+}
+function loop(){if(needDraw)draw();requestAnimationFrame(loop)}
+
+/* ---------- interaction ---------- */
+function tileAt(e){const r=cv.getBoundingClientRect(),x=Math.floor((e.clientX-r.left)/r.width*W),y=Math.floor((e.clientY-r.top)/r.height*H);
+  return x<0||y<0||x>=W||y>=H?-1:y*W+x}
+function readout(i){
+  if(i<0){$('#readout').innerHTML='<span>Hover or tap the map to read a tile.</span>';return}
+  const w=world,b=BIOMES[w.biome[i]],E=w.el[i],land=E>=0;
+  const m=land?Math.round(E*5000):Math.round(E*6000),t=Math.round(-30+w.temp[i]*65),o=state.owner[i];
+  $('#readout').innerHTML=`<span><b>${b.n}</b>${w.river[i]?' · river':''}</span><span>${m} m</span><span>${t} °C</span><span>${Math.round(w.moist[i]*300)} cm rain</span>`+
+   (land?`<span>fertility <b>${w.hab[i].toFixed(2)}</b></span>`:'')+(o>=0?`<span style="color:${state.realms[o].color}">● ${state.realms[o].name}</span>`:'');
+}
+cv.addEventListener('pointermove',e=>{const i=tileAt(e);if(i!==state.hover){state.hover=i;readout(i);needDraw=true}});
+cv.addEventListener('pointerleave',()=>{state.hover=-1;readout(-1);needDraw=true});
+cv.addEventListener('click',e=>{
+  const i=tileAt(e);state.hover=i;readout(i);needDraw=true;
+  if(state.phase!=='place'||i<0)return;
+  if(!isLand(i)){toast('Choose dry land.');return}
+  if(world.hab[i]<.3){toast('Too barren to feed a capital. Try greener ground.');return}
+  startGame(i);
+});
+
+/* ---------- design controls ---------- */
+const randSeed=()=>Math.random().toString(36).slice(2,8).toUpperCase();
+function params(){return{water:+$('#sWater').value/100,cont:+$('#sCont').value,temp:+$('#sTemp').value/10,wet:+$('#sWet').value/10,rough:+$('#sRough').value/10}}
+function labels(){
+  const p=params();
+  $('#oWater').textContent=Math.round(p.water*100)+'%';$('#oCont').textContent=p.cont;
+  $('#oTemp').textContent=p.temp<-.3?'Frozen':p.temp<-.05?'Cool':p.temp<.05?'Temperate':p.temp<.3?'Warm':'Scorched';
+  $('#oWet').textContent=p.wet<-.3?'Arid':p.wet<-.05?'Dry':p.wet<.05?'Average':p.wet<.3?'Wet':'Soaked';
+  $('#oRough').textContent=p.rough<.2?'Flat':p.rough<.5?'Rolling':p.rough<.8?'Rugged':'Alpine';
+}
+let rebuildQ=false;
+function rebuild(){
+  labels();
+  world=generate(($('#seed').value||'X').toUpperCase(),params());
+  paintTerrain();renderStats();ownerDirty=true;needDraw=true;updateTitle();
+}
+function queueRebuild(){if(rebuildQ)return;rebuildQ=true;requestAnimationFrame(()=>{rebuildQ=false;rebuild()})}
+['sWater','sCont','sTemp','sWet','sRough','seed'].forEach(id=>$('#'+id).addEventListener('input',queueRebuild));
+$('#roll').onclick=()=>{$('#seed').value=randSeed();rebuild()};
+$('#toPlace').onclick=()=>{resetRealms();setPhase('place')};
+$('#backDesign').onclick=()=>setPhase('design');
+$('#lens').onchange=e=>{state.lens=e.target.checked;ownerDirty=true;needDraw=true};
+$('#playBtn').onclick=()=>{state.paused=!state.paused;renderPanel();scheduleTick()};
+$('#stepBtn').onclick=()=>{state.paused=true;clearTimeout(state.timer);tick();renderPanel()};
+$('#speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;state.speed=+b.dataset.s;
+  [...$('#speed').children].forEach(c=>c.classList.toggle('on',c===b));scheduleTick()});
+$('#decrees').addEventListener('click',e=>{const b=e.target.closest('button[data-d]');if(b)decree(b.dataset.d)});
+
+/* legend */
+$('#legend').innerHTML=[1,3,5,6,7,8,9,10,11,12,13,14].map(b=>`<span><i style="background:rgb(${BIOMES[b].c})"></i>${BIOMES[b].n}</span>`).join('')+`<span><i style="background:rgb(60,126,188)"></i>River</span>`;
+
+/* boot */
+$('#seed').value='ARDOVA';
+rebuild();readout(-1);requestAnimationFrame(loop);
+</script>
+
+</body></html>
